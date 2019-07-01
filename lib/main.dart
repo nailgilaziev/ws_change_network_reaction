@@ -69,14 +69,25 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _manualCloseConnection() {
     tPrint('manual disconnect pressed');
-    ws.close(WebSocketStatus.normalClosure, 'bye').then((dynamic ws
+    ws
+        .close(WebSocketStatus.normalClosure, 'bye')
+        .then((dynamic ws
         /*WebSocket*/) {
       tPrint('ws closed successfully');
-    }).catchError((Object e) {
+    })
+        .catchError((Object e) {
       // TODO(n): how this can happen?
       // and if happen how app must react on it?
       tPrint('ws closing failed with $e');
-    }).then((_) {
+    })
+        .then<dynamic>((_) => wsSubscription.cancel())
+        .then((dynamic paramIsNull) {
+      tPrint('wsSubscription closed successfully');
+    })
+        .catchError((Object e) {
+      tPrint('error catched on wsSubscription close $e');
+    })
+        .then((_) {
       setState(() {
         wsFuture = null;
         wsSubscription = null;
@@ -84,12 +95,6 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
 //    with subscription cancel code ws.listen.onDone doesn't called
-
-//    wsSubscription.cancel().then((dynamic paramIsNull) {
-//      tPrint('wsSubscription closed successfully');
-//    }).catchError((Object e) {
-//      tPrint('error catched on wsSubscription close $e');
-//    })
   }
 
   void _printState() {
