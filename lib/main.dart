@@ -27,23 +27,22 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<WebSocket> wsFuture;
   WebSocket ws;
-  Exception ex;
-  String transferredData;
+  StreamSubscription<dynamic> wsSubscription;
 
-  void initws() {
-    transferredData = null;
-    ex = null;
-    ws = null;
-    wsFuture =
+  void _initws() {
+    final f =
         WebSocket.connect(widget.wsurl).timeout(Duration(seconds: 15)).then(
           _configureWsAfterConnecting,
           onError: (Object e) => tPrint('connect.onError $e'),
         );
     tPrint('connect to ${widget.wsurl} requested');
+    setState(() {
+      wsFuture = f;
+    });
   }
 
   FutureOr<WebSocket> _configureWsAfterConnecting(WebSocket ws) {
-    this.ws = ws;
+    ws.pingInterval = Duration(seconds: 10);
     ws.handleError((Object e) {
       tPrint('ws.handleError $e');
     });
@@ -51,30 +50,62 @@ class _MyHomePageState extends State<MyHomePage> {
     ws.done.then((dynamic d) {
       // ignore: avoid_as
       final ws = d as WebSocket;
-      final details =
-          'closecode ${ws.closeCode} closeReason ${ws
-          .closeReason} readyState ${ws.readyState}';
-      return tPrint('ws.done.then with details:\n$details');
+      tPrint('ws.done.then with details:\n${_wsDetails(ws)}');
     });
 
-    ws.listen(
+    wsSubscription = ws.listen(
       // ignore: avoid_annotating_with_dynamic
           (dynamic d) => tPrint('ws.listen received = $d'),
       onError: (Object e) => tPrint('ws.listen.onError $e'),
-      onDone: () => tPrint('ws.listen.onDone called'),
+      onDone: () =>
+          tPrint('ws.listen.onDone called. ws state is:\n${_wsDetails(ws)}'),
     );
     tPrint('connect successfully established');
+    setState(() {
+      this.ws = ws;
+    });
     return ws;
   }
 
-  void tPrint(String msg) {
-    print(DateTime.now().toString() + '   ' + msg);
+  void _manualCloseConnection() {
+    tPrint('manual disconnect pressed');
+    ws.close(WebSocketStatus.normalClosure, 'bye').then((dynamic ws
+        /*WebSocket*/) {
+      tPrint('ws closed successfully');
+    }).catchError((Object e) {
+      // TODO(n): how this can happen?
+      // and if happen how app must react on it?
+      tPrint('ws closing failed with $e');
+    }).then((_) {
+      setState(() {
+        wsFuture = null;
+        wsSubscription = null;
+      });
+    });
+
+//    with subscription cancel code ws.listen.onDone doesn't called
+
+//    wsSubscription.cancel().then((dynamic paramIsNull) {
+//      tPrint('wsSubscription closed successfully');
+//    }).catchError((Object e) {
+//      tPrint('error catched on wsSubscription close $e');
+//    })
   }
 
-  @override
-  void initState() {
-    initws();
-    super.initState();
+  void _printState() {
+    print('ready state ${ws.readyState}');
+    print('close code ${ws.closeCode}');
+    print('close reason ${ws.closeReason}');
+    print('extensions ${ws.extensions}');
+    print('protocol ${ws.protocol}');
+  }
+
+  String _wsDetails(WebSocket ws) =>
+      'readyState:${ws.readyState} closeCode:${ws.closeCode} closeReason:${ws
+          .closeReason}';
+
+  void tPrint(String msg) {
+    print(DateTime.now().toString() + '   ' + msg);
   }
 
   @override
@@ -88,34 +119,36 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
+            Row(
+              children: <Widget>[
+                RaisedButton(
+                  onPressed: wsFuture != null ? null : _initws,
+                  child: const Text('conn'),
+                ),
+                const SizedBox(width: 8),
+                RaisedButton(
+                  onPressed: ws == null ? null : _printState,
+                  child: const Text('state'),
+                ),
+                const SizedBox(width: 8),
+                RaisedButton(
+                  onPressed:
+                  wsSubscription == null ? null : _manualCloseConnection,
+                  child: const Text('disconn'),
+                ),
+              ],
+            ),
             Form(
               child: TextFormField(
                 controller: _controller,
                 decoration: InputDecoration(labelText: 'Send a message'),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0),
-              child: RaisedButton(
-                onPressed: () {
-                  if (ws == null) {
-                    print('ws is not inited yet');
-                    return;
-                  }
-                  print('ready state ${ws.readyState}');
-                  print('close code ${ws.closeCode}');
-                  print('close reason ${ws.closeReason}');
-                  print('extensions ${ws.extensions}');
-                  print('protocol ${ws.protocol}');
-                },
-                child: const Text('check state'),
-              ),
-            ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _sendMessage,
+        onPressed: ws == null ? null : _sendMessage,
         tooltip: 'Send message',
         child: Icon(Icons.send),
       ),
